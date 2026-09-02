@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: write  # needed to update Gist
-  gists: write     # needed to update Gist
 
 jobs:
   sync-license:
@@ -43,10 +42,10 @@ jobs:
       - name: Fetch current Gist
         id: gist
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIST_PAT: ${{ secrets.GIST_PAT }}
           GIST_ID: ${{ secrets.LICENSE_GIST_ID }}
         run: |
-          curl -s -H "Authorization: token $GITHUB_TOKEN" \
+          curl -s -H "Authorization: token $GIST_PAT" \
             "https://api.github.com/gists/${GIST_ID}" > gist.json
           
           # Extract current content
@@ -82,16 +81,16 @@ jobs:
       
       - name: Update Gist
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIST_PAT: ${{ secrets.GIST_PAT }}
           GIST_ID: ${{ secrets.LICENSE_GIST_ID }}
         run: |
           UPDATED_CONTENT="${{ steps.update.outputs.stdout }}"
           
           curl -X PATCH \
-            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Authorization: token $GIST_PAT" \
             -H "Accept: application/vnd.github.v3+json" \
             "https://api.github.com/gists/${GIST_ID}" \
-            -d "{\"files\": {\"licenses.json\": {\"content\": $(echo "$UPDATED_CONTENT" | jq -Rs .)}}}"
+            -d "{\"files\": {\"licenses.json\": {\"content\": $(echo \"$UPDATED_CONTENT\" | jq -Rs .)}}}"
       
       - name: Notify success
         run: |
