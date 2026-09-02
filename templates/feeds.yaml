@@ -1,0 +1,44 @@
+niche: "AI automation for content creators"
+keywords: ["AI content", "automation workflow", "creator economy", "viral video", "scriptwriting AI", "content marketing AI", "video editing AI"]
+rss_feeds:
+  - name: "The Verge AI"
+    url: "https://www.theverge.com/ai-artificial-intelligence/rss/index.xml"
+    category: "tech_news"
+  - name: "TechCrunch AI"
+    url: "https://techcrunch.com/tag/artificial-intelligence/feed/"
+    category: "tech_news"
+  - name: "Creator Economy Newsletter"
+    url: "https://creatoreconomy.so/rss/"
+    category: "creator_business"
+  - name: "Marketing AI Institute"
+    url: "https://www.marketingaiinstitute.com/blog/rss.xml"
+    category: "marketing_tech"
+  - name: "The Information AI"
+    url: "https://www.theinformation.com/feed/tag/artificial-intelligence"
+    category: "tech_business"
+  - name: "a16z Consumer"
+    url: "https://a16z.com/consumer/feed/"
+    category: "vc_perspective"
+youtube_channels:
+  - channel_id: "UC_x5XG1OV2P6uZZ5FSM9Ttw"
+    name: "Example Creator Education"
+    keywords: ["scriptwriting", "viral", "retention", "algorithm"]
+  - channel_id: "UCJowOS1R0FnhipXVqEnYU1A"
+    name: "Example AI Tools Review"
+    keywords: ["AI tools", "automation", "content creation"]
+  - channel_id: "UCXuqSBlHAE6Xw-yeJA0Tunw"
+    name: "Example Marketing Strategy"
+    keywords: ["content strategy", "growth", "monetization"]
+twitter_lists:
+  - list_id: "1234567890123456789"
+    name: "Top AI Creators"
+    description: "Curated list of AI-focused content creators"
+  - list_id: "9876543210987654321"
+    name: "Creator Economy Leaders"
+    description: "Founders and operators in creator economy"
+google_trends_regions: ["BR", "US", "PT", "GB"]
+scan_window_hours: 24
+max_items_per_source: 10
+materiality_threshold: 0.7
+primary_platform: "linkedin"
+webhook_url_env: "SLACK_WEBHOOK_URL"

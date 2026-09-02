@@ -1,0 +1,21 @@
+{
+  "type": "module2",
+  "approved_at": "2026-09-01T21:29:29.977247",
+  "item_id": "trend_20260901_002",
+  "title": "TikTok Algorithm Update Favors Longer Retention",
+  "source": "TechCrunch AI",
+  "source_url": "https://techcrunch.com/2026/09/01/tiktok-algorithm-retention",
+  "score": 0.82,
+  "executive_summary": "TikTok quietly updated its algorithm to weight 30-second+ retention higher than completion rate. Creators adapting to longer-form vertical video are seeing 40% reach increases.",
+  "key_insight": "TikTok is pivoting to YouTube-style retention metrics -- the 15-second hook era is ending.",
+  "suggested_angle": "Prediction",
+  "draft_post": "TikTok just killed the 15-second hook. \n\nNew algorithm weights 30s+ retention over completion rate. Creators making 60-90s vertical videos are seeing 40% reach gains.\n\nThe pivot: Hook -> Value -> Deep Value -> CTA\n\nWho's already testing longer verticals? \n\n#TikTok #Algorithm #ContentStrategy #ViralVideo",
+  "platform": "linkedin",
+  "tone_id": "b2b_corporate",
+  "keywords_matched": [
+    "TikTok",
+    "algorithm",
+    "retention",
+    "viral"
+  ]
+}

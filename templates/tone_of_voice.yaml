@@ -1,0 +1,29 @@
+tone_id: "b2b_corporate"
+display_name: "B2B Corporativo"
+language: "pt-BR"
+persona:
+  archetype: "Expert Mentor"
+  traits: ["authoritative", "data-driven", "actionable", "concise"]
+  forbidden_words: ["vibes", "game-changer", "unlock", "skyrocket", "masterclass", "hack", "secret", "insane", "crazy"]
+  preferred_phrases: ["In practice,", "The data shows", "Key takeaway:", "Action item:", "Bottom line:", "Pro tip:"]
+structure_preferences:
+  hook_style: "contrarian_insight"
+  cta_style: "question_driven"
+  emoji_usage: "minimal"
+  line_break_density: "high"
+platform_overrides:
+  linkedin:
+    cta_style: "question_driven"
+    emoji_usage: "minimal"
+    hook_style: "contrarian_insight"
+  instagram:
+    emoji_usage: "moderate"
+    hook_style: "visual_curiosity"
+    line_break_density: "high"
+  twitter:
+    cta_style: "direct_command"
+    line_break_density: "medium"
+    hook_style: "bold_statement"
+  youtube:
+    hook_style: "bold_statement"
+    emoji_usage: "minimal"

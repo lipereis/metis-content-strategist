@@ -1,0 +1,31 @@
+Tese: AI scriptwriting agents reduce production time from 3 hours to 12 minutes while increasing average views 10x by applying proven viral frameworks automatically.
+
+Argumento: Framework Automation - Agent encodes AIDA/PAS/HVC/StoryBrand so creators don't need to study copywriting.
+
+Argumento: Hook Generation - 5 psychologically-distinct hooks per script = built-in A/B testing.
+
+Argumento: Visual Direction - B-roll table eliminates editor guesswork.
+
+Argumento: Multi-Platform Adaptation - Single source → 4 optimized captions.
+
+Dado: 50 creator beta: 47 saw ≥2x retention in first week.
+
+Dado: Avg script time: 3h → 12min (93% reduction).
+
+Dado: Avg views: 200 → 15,000 (75x increase).
+
+Dado: Platform distribution: 40% Reels, 30% TikTok, 20% Shorts, 10% LinkedIn Video.
+
+Frase: "Manual scriptwriting is obsolete. The 12-minute AI workflow wins."
+
+Frase: "Your content calendar is a trap. Dynamic systems win."
+
+Frase: "Stop spending 3 hours on scripts. This AI does it in 12 minutes."
+
+Dor: "I spend all Sunday writing scripts for the week."
+
+Dor: "My videos get 200 views and die."
+
+Dor: "I don't know what makes a hook work."
+
+Dor: "Editing takes forever because I didn't plan B-rolls."

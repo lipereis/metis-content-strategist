@@ -1,0 +1,17 @@
+{
+  "licenses": {
+    "CS-PRO-DEMO-001": {
+      "email": "demo@contentstrategist.io",
+      "plan": "pro",
+      "expires": "2025-12-31",
+      "max_runs": 1000
+    },
+    "CS-AGENCY-DEMO-001": {
+      "email": "agency@contentstrategist.io",
+      "plan": "agency",
+      "expires": "2025-12-31",
+      "max_runs": -1
+    }
+  },
+  "revoked": []
+}
