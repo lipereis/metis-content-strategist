@@ -34,6 +34,7 @@ Tests fake the LLM, so they run without a key: `pytest tests`.
 
 ### Limits
 
+- This is a demonstration project. The LLM path is covered by tests that fake the model; it has not been run against a live endpoint yet, so expect to adjust the model name or endpoint on first use.
 - Metis started as a skill for the Hermes agent. `scripts/hermes_entry.py`, `scripts/llm_delegation.py`, `deploy_client.py` and the cron examples below belong to that integration and have not been re-tested since the standalone LLM path was added.
 - The model is instructed to stay within the source material, but nothing checks its output against the transcript. A person should review before publishing; Module 2 is built around that approval step.
 - Google Trends fetching currently fails (the endpoint no longer returns JSON), and YouTube and X need their own API keys. RSS is the source that works out of the box.
