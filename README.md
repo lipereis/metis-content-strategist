@@ -9,7 +9,7 @@ End-to-end B2B content production agent with two operational modules:
 
 ## How it runs, and what is not done yet
 
-Metis is written as a skill for the [Hermes](https://github.com/NousResearch/hermes-agent) agent. The Python scripts also run on their own from the command line, but the two modes do different amounts of work:
+Metis is written as a skill for the Hermes agent. The Python scripts also run on their own from the command line, but the two modes do different amounts of work:
 
 | Step | Standalone CLI | Inside Hermes |
 |------|----------------|---------------|
