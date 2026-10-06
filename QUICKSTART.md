@@ -17,9 +17,6 @@ cd content-strategist
 # 3. Activate environment
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-# 4. Set your license key
-export CONTENT_STRATEGIST_LICENSE="YOUR_KEY_HERE"
-# Windows: $env:CONTENT_STRATEGIST_LICENSE="YOUR_KEY_HERE"
 ```
 
 > **Tip**: Add the export to your `.bashrc` / `.zshrc` / PowerShell profile so it persists.
@@ -179,8 +176,6 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 TELEGRAM_BOT_TOKEN=123456:abc...
 TELEGRAM_CHAT_ID=-1001234567890
 
-# License (required)
-CONTENT_STRATEGIST_LICENSE=your_license_key
 ```
 
 ---
@@ -194,40 +189,4 @@ CONTENT_STRATEGIST_LICENSE=your_license_key
 | No trends found | Lower `materiality_threshold` in `feeds.yaml`, add more RSS feeds |
 | Webhook 403/404 | Verify webhook URL, check Slack/Telegram bot permissions |
 | YouTube quota exceeded | Reduce `max_items_per_source`, add caching |
-| License invalid | Check `CONTENT_STRATEGIST_LICENSE` env var, verify Gist access |
-
----
-
-## 📚 Key References
-
-| File | Purpose |
-|------|---------|
-| `references/copywriting-frameworks.md` | AIDA, PAS, HVC, StoryBrand cheat sheets |
-| `references/hook-taxonomy.md` | 25 hook templates (5 types × 5) |
-| `references/platform-specs.md` | Char limits, hashtags, algo signals per platform |
-| `references/webhook-schemas.md` | Slack Block Kit + Telegram payload schemas |
-
----
-
-## 🎯 Pro Tips
-
-1. **Batch transcripts**: Run Module 1 on 5 transcripts → 35 platform posts in 10 min
-2. **Custom hooks**: Edit `references/hook-taxonomy.md` with your niche-specific hooks
-3. **Tone per client**: Create `config/tone_clientA.yaml`, `config/tone_clientB.yaml`
-4. **Schedule radar**: `cronjob action=create schedule="0 9-21/4 * * *" ...` (in Hermes)
-5. **Batch export**: `4 → 1` weekly → import to Notion content calendar
-
----
-
-## 📞 Support
-
-- **Docs**: This guide + `references/` folder
-- **Issues**: GitHub Issues (private repo)
-- **Email**: your-email@domain.com
-- **Slack**: [Community Link]
-
----
-
-**Welcome to automated content at scale!** 🚀
-
 *Content Strategist Agent v1.0 — Built for B2B creators who value speed & quality.*

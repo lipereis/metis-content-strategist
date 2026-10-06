@@ -84,23 +84,6 @@ jobs:
           print('✅ Review sandbox loads correctly')
           "
       
-      - name: Test License Validator
-        run: |
-          # Test with demo key (will fail without Gist but validates code)
-          python -c "
-          import sys
-          sys.path.insert(0, 'scripts')
-          from license import validate_license, FAIL_OPEN
-          import os
-          os.environ['LICENSE_FAIL_OPEN'] = 'true'
-          # This will fail open but validates the code path
-          try:
-              lic = validate_license('TEST-KEY')
-              print(f'License validator works: {lic is not None}')
-          except Exception as e:
-              print(f'Expected error without Gist: {e}')
-          "
-      
       - name: Test Export Functions
         run: |
           python -c "

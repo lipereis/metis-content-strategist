@@ -16,8 +16,6 @@ apscheduler>=3.10.4
 # Optional: for webhook server
 flask>=2.3.0
 
-# Optional: for Stripe integration
-stripe>=7.0.0
 
 # Development
 pytest>=7.4.0

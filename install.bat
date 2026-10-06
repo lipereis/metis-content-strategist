@@ -77,14 +77,6 @@ if not exist .env (
     echo SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/XXX/XXX>> .env
     echo REM TELEGRAM_BOT_TOKEN=123456:ABC-DEF>> .env
     echo REM TELEGRAM_CHAT_ID=-1001234567890>> .env
-    echo.>> .env
-    echo # License (required)>> .env
-    echo CONTENT_STRATEGIST_LICENSE=your_license_key_here>> .env
-    echo.>> .env
-    echo # Optional: License server (for custom deployments)>> .env
-    echo REM LICENSE_GIST_URL=https://gist.githubusercontent.com/USER/GIST_ID/raw/licenses.json>> .env
-    echo REM LICENSE_CACHE_TTL=86400>> .env
-    echo REM LICENSE_FAIL_OPEN=false>> .env
     echo ✅ Created .env template — edit it with your keys!
 )
 
@@ -118,21 +110,17 @@ if not exist .gitignore (
     echo # OS>>.gitignore
     echo .DS_Store>>.gitignore
     echo Thumbs.db>>.gitignore
-    echo.>>.gitignore
-    echo # License cache>>.gitignore
-    echo ~\.content_strategist\>>.gitignore
 )
 
 echo.
 echo ✅ Installation complete!
 echo.
 echo 📋 Next steps:
-echo   1. Edit .env with your API keys and license
+echo   1. Edit .env with your API keys
 echo   2. Activate environment: .venv\Scripts\activate
 echo   3. Test: python scripts\validate_tone.py config\tone_of_voice.yaml
 echo   4. Run pipeline: python scripts\module1_pipeline.py --input transcripts\sample.txt --tone b2b_corporate --platforms instagram,linkedin,twitter,youtube,tiktok_enhanced,threads,newsletter
 echo.
 echo 📖 Full guide: QUICKSTART.md
-echo 📖 License setup: LICENSE_GIST_TEMPLATE.json
 echo.
 echo 🚀 Ready to create viral content!

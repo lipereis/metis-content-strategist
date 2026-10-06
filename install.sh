@@ -66,13 +66,6 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/XXX/XXX
 # TELEGRAM_BOT_TOKEN=123456:ABC-DEF
 # TELEGRAM_CHAT_ID=-1001234567890
 
-# License (required)
-CONTENT_STRATEGIST_LICENSE=your_license_key_here
-
-# Optional: License server (for custom deployments)
-# LICENSE_GIST_URL=https://gist.githubusercontent.com/USER/GIST_ID/raw/licenses.json
-# LICENSE_CACHE_TTL=86400
-# LICENSE_FAIL_OPEN=false
 EOF
     echo "✅ Created .env template — edit it with your keys!"
 fi
@@ -109,8 +102,6 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# License cache
-~/.content_strategist/
 EOF
 fi
 
@@ -118,12 +109,11 @@ echo ""
 echo "✅ Installation complete!"
 echo ""
 echo "📋 Next steps:"
-echo "  1. Edit .env with your API keys and license"
+echo "  1. Edit .env with your API keys"
 echo "  2. Activate environment: source .venv/bin/activate"
 echo "  3. Test: python scripts/validate_tone.py config/tone_of_voice.yaml"
 echo "  4. Run pipeline: python scripts/module1_pipeline.py --input transcripts/sample.txt --tone b2b_corporate --platforms instagram,linkedin,twitter,youtube,tiktok_enhanced,threads,newsletter"
 echo ""
 echo "📖 Full guide: QUICKSTART.md"
-echo "📖 License setup: LICENSE_GIST_TEMPLATE.json"
 echo ""
 echo "🚀 Ready to create viral content!"

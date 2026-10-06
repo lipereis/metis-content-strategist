@@ -1,6 +1,6 @@
 # Dockerfile — Content Strategist Agent
 # Build: docker build -t content-strategist .
-# Run: docker run -v $(pwd)/data:/app/data -e CONTENT_STRATEGIST_LICENSE=KEY content-strategist
+# Run: docker run -v $(pwd)/data:/app/data content-strategist
 
 FROM python:3.11-slim
 
@@ -30,7 +30,6 @@ COPY scripts/ ./scripts/
 COPY templates/ ./templates/
 COPY references/ ./references/
 COPY QUICKSTART.md .
-COPY LICENSE_GIST_TEMPLATE.json .
 
 # Create directories
 RUN mkdir -p /app/config /app/state /app/output /app/transcripts /app/data
