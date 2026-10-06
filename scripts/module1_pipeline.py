@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # Optional: LLM delegation (requires Hermes delegate_task tool)
 try:
@@ -21,6 +21,12 @@ try:
     LLM_DELEGATION_AVAILABLE = True
 except ImportError:
     LLM_DELEGATION_AVAILABLE = False
+
+# Standalone LLM client (OpenAI-compatible endpoint, Gemini by default)
+_scripts_dir = Path(__file__).parent
+if str(_scripts_dir) not in sys.path:
+    sys.path.insert(0, str(_scripts_dir))
+from llm_client import LLMError, MISSING_KEY_HELP, Transport, complete_json, llm_configured
 
 # Import formatters from utils
 try:
@@ -95,44 +101,6 @@ class PipelineOutput(BaseModel):
 FILLER_WORDS_PT = {
     "né", "tipo assim", "é", "ah", "hum", "então", "daí", "pois é",
     "sabe", "tipo", "basicamente", "na verdade", "enfim", "por assim dizer"
-}
-
-HOOK_TEMPLATES = {
-    "curiosity": [
-        "The {specific_thing} {authority} don't want you to know",
-        "Why {common_practice} is actually {counter_fact}",
-        "What {successful_entity} does at {specific_time} that you don't",
-        "The hidden {metric} behind every viral {format}",
-        "{number} things about {topic} that {authority} never mentions"
-    ],
-    "contrarian": [
-        "Stop {universal_advice}. Start {alternative} instead.",
-        "Everyone says {X}. The data says {Y}.",
-        "{popular_strategy} is a trap. Here's why.",
-        "The {adjective} truth about {sacred_cow}",
-        "You're not {failing_because_X}. You're {failing_because_Y}."
-    ],
-    "pain_point": [
-        "Why your {output} {fails_specific_way} (and the fix)",
-        "{specific_frustration}? You're missing {one_element}.",
-        "The real reason {effort} doesn't equal {result}",
-        "{symptom} is not the problem. {root_cause} is.",
-        "If you're {doing_X} but {result_Y}, read this."
-    ],
-    "social_proof": [
-        "How {client} {result} in {timeframe} with {method}",
-        "{authority} uses this {framework}. Here's the breakdown.",
-        "{number} creators tested this. {number} saw {result}.",
-        "The exact {script} that got {result} for {niche}",
-        "Steal the {asset} that {top_performer} uses for {outcome}"
-    ],
-    "bold_statement": [
-        "{industry_standard} is dead. {new_paradigm} wins.",
-        "You don't need {expensive_thing}. You need {simple_thing}.",
-        "Most {role} waste {time_money} on {activity}. Don't.",
-        "The {adjective} {number} rule that changes everything.",
-        "{year}: If you're not {doing_X}, you're {consequence}."
-    ]
 }
 
 
@@ -221,48 +189,72 @@ def select_framework(platform: str) -> str:
     return framework_map.get(platform.lower(), "Hook-Value-CTA")
 
 
-def generate_hooks(insights: dict, tone: ToneProfile) -> list[Hook]:
-    """Generate 5 hooks, one per psychological type.
-    
-    Uses LLM delegation if available (Hermes delegate_task), falls back to templates.
-    """
-    # Try LLM delegation first
-    if LLM_DELEGATION_AVAILABLE:
-        try:
-            # This would be called via delegate_task in Hermes context
-            # For CLI usage, we fall back to templates
-            pass
-        except Exception:
-            pass
-    
-    # Template fallback (current implementation)
-    hooks = []
-    thesis = insights.get("core_thesis", "")
-    soundbites = insights.get("soundbites", [])
-    data_points = insights.get("data_points", [])
-    pain_points = insights.get("pain_points", [])
+HOOK_TYPES = ["curiosity", "contrarian", "pain_point", "social_proof", "bold_statement"]
 
-    # Extract key entities for template filling
-    numbers = re.findall(r"\d+(?:[.,]\d+)?[x%]?", thesis + " " + " ".join(data_points))
-    entities = re.findall(r"[A-Z][a-z]+ (?:AI|agent|workflow|script|creator|views?|retention)", thesis + " " + " ".join(soundbites), re.IGNORECASE)
 
-    # Simple template instantiation (in production, use LLM for better filling)
-    hook_data = [
-        ("curiosity", f"The 12-minute script workflow that 10x'd a creator's views", ["instagram", "youtube", "linkedin"]),
-        ("contrarian", f"Stop spending 3 hours on scripts. This AI does it in 12 minutes.", ["tiktok", "twitter", "instagram"]),
-        ("pain_point", f"Stuck at 200 views? Your script process is the bottleneck.", ["linkedin", "instagram", "youtube"]),
-        ("social_proof", f"How one creator went 200→15k views by changing ONLY their script structure", ["linkedin", "youtube", "twitter"]),
-        ("bold_statement", f"Manual scriptwriting is obsolete. The 12-minute AI workflow wins.", ["tiktok", "twitter", "instagram"])
-    ]
+class HooksPlan(BaseModel):
+    hooks: list[Hook]
 
-    for htype, text, platforms in hook_data:
-        # Apply tone filters
-        for forbidden in tone.persona.get("forbidden_words", []):
-            if forbidden.lower() in text.lower():
-                text = text.replace(forbidden, "[filtered]")
-        hooks.append(Hook(hook_type=htype, text=text, platform_fit=platforms))
+    @model_validator(mode="after")
+    def one_hook_per_type(self):
+        types = sorted(h.hook_type for h in self.hooks)
+        if types != sorted(HOOK_TYPES):
+            raise ValueError(f"need exactly one hook of each type {HOOK_TYPES}, got {types}")
+        return self
 
-    return hooks
+
+class InsightsPlan(BaseModel):
+    core_thesis: str
+    arguments: list[str] = []
+    data_points: list[str] = []
+    soundbites: list[str] = []
+    pain_points: list[str] = []
+
+
+class ScriptPlan(BaseModel):
+    rows: list[ScriptRow] = Field(min_length=5, max_length=12)
+
+
+class CaptionPlan(BaseModel):
+    content: str = Field(min_length=20)
+
+
+def _tone_brief(tone: ToneProfile) -> str:
+    persona = tone.persona
+    prefs = tone.structure_preferences
+    return (f"Tone: {tone.display_name}. Write in {tone.language}. "
+            f"Persona: {persona.get('archetype', '')}; traits: {', '.join(persona.get('traits', []))}. "
+            f"Emoji usage: {prefs.get('emoji_usage', 'minimal')}; call to action style: {prefs.get('cta_style', '')}. "
+            f"Never use these words: {', '.join(persona.get('forbidden_words', [])) or 'none'}.")
+
+
+GROUNDING_RULE = ("Use only facts, numbers and claims that appear in the source material below. "
+                  "Do not invent statistics, results, customers or quotes. If the source has no number, use none.")
+
+
+def _source_block(insights: dict) -> str:
+    return json.dumps(insights, ensure_ascii=False, indent=2)
+
+
+def extract_insights_llm(cleaned_text: str, *, transport: Transport | None = None) -> dict[str, Any]:
+    """Structure an unmarked transcript into thesis, arguments, data points, soundbites and pain points."""
+    plan = complete_json(
+        "You structure raw transcripts for a content team. " + GROUNDING_RULE,
+        "Extract the core thesis, supporting arguments, data points, quotable soundbites and audience pain "
+        f"points from this transcript. Leave a list empty if the transcript has nothing for it.\n\n{cleaned_text}",
+        InsightsPlan, transport=transport)
+    return plan.model_dump()
+
+
+def generate_hooks(insights: dict, tone: ToneProfile, *, transport: Transport | None = None) -> list[Hook]:
+    """Generate 5 hooks from the transcript insights, one per psychological type."""
+    plan = complete_json(
+        f"You write opening hooks for short-form video. {_tone_brief(tone)} {GROUNDING_RULE}",
+        f"Write exactly five hooks, one for each type: {', '.join(HOOK_TYPES)}. Each hook is at most 160 "
+        "characters. For platform_fit, list the platforms (instagram, tiktok, linkedin, twitter, youtube) "
+        f"where that hook fits best.\n\nSource material:\n{_source_block(insights)}",
+        HooksPlan, transport=transport)
+    return plan.hooks
 
 
 def generate_hooks_llm(insights: dict, tone: ToneProfile, delegate_task_fn) -> list[Hook]:
@@ -305,24 +297,31 @@ def generate_hooks_llm(insights: dict, tone: ToneProfile, delegate_task_fn) -> l
     return hooks
 
 
-def build_script_table(insights: dict, hooks: list[Hook]) -> list[ScriptRow]:
-    """Build the video script + edit guide table."""
-    # This is a template; in production, use LLM to generate from insights
-    rows = [
-        ScriptRow(time_range="0-3s", voiceover="Manual scriptwriting is obsolete.", broll="Creator staring at blank screen, stressed", text_overlay="MANUAL SCRIPTWRITING IS OBSOLETE", sfx="Tension chord"),
-        ScriptRow(time_range="3-6s", voiceover="The 12-minute AI workflow wins.", broll="Split screen: 3h timeline vs 12min timeline", text_overlay="3 HOURS → 12 MINUTES", sfx="Whoosh transition"),
-        ScriptRow(time_range="6-12s", voiceover="We encoded AIDA, PAS, and viral hooks into an agent.", broll="Screen record: agent generating hooks", text_overlay="AIDA • PAS • HOOK-VALUE-CTA", sfx="UI click sounds"),
-        ScriptRow(time_range="12-20s", voiceover="Five hook types. Built-in A/B testing.", broll="Animated cards: Curiosity, Contrarian, Pain, Proof, Bold", text_overlay="5 HOOKS • AUTO A/B TEST", sfx="Pop per card"),
-        ScriptRow(time_range="20-30s", voiceover="B-roll table means your editor knows exactly what to cut.", broll="Editor dragging clips to timeline matching table", text_overlay="B-ROLL TABLE = ZERO GUESSWORK", sfx="Satisfying snap"),
-        ScriptRow(time_range="30-40s", voiceover="One source. Four platform captions. Zero rewrite.", broll="Phone screens: IG, LI, TW, YT captions side by side", text_overlay="1 SOURCE → 4 PLATFORMS", sfx="Smooth swipe"),
-        ScriptRow(time_range="40-48s", voiceover="Beta creators: 47 of 50 doubled retention week one.", broll="Chart: retention curves before/after", text_overlay="47/50 SAW 2X RETENTION", sfx="Rising tone"),
-        ScriptRow(time_range="48-55s", voiceover="Your next viral script is 12 minutes away.", broll="Creator hitting 'Generate', smiling at result", text_overlay="YOUR NEXT VIRAL SCRIPT: 12 MIN", sfx="Resolution chord"),
-        ScriptRow(time_range="55-60s", voiceover="Link in bio. First script free.", broll="CTA button animation, logo", text_overlay="FIRST SCRIPT FREE • LINK IN BIO", sfx="Brand stinger"),
-    ]
-    return rows
+def build_script_table(insights: dict, hooks: list[Hook], tone: ToneProfile | None = None, *,
+                       transport: Transport | None = None) -> list[ScriptRow]:
+    """Build the video script + edit guide table (30-60s vertical video) from the insights."""
+    opener = hooks[0].text if hooks else ""
+    plan = complete_json(
+        f"You script 30-60 second vertical videos for editors. {_tone_brief(tone) if tone else ''} {GROUNDING_RULE}",
+        "Write the script as 5 to 12 rows covering the whole video in order. Each row has: time_range "
+        "(like '0-3s'), voiceover (what is said), broll (what the editor shows), text_overlay (short "
+        f"on-screen text) and sfx (sound or music cue). Open with this hook: {opener!r}. End with a call to "
+        f"action.\n\nSource material:\n{_source_block(insights)}",
+        ScriptPlan, transport=transport)
+    return plan.rows
 
 
-def format_caption(platform: str, insights: dict, hooks: list[Hook], script_rows: list[ScriptRow], tone: ToneProfile) -> CaptionBlock:
+PLATFORM_BRIEFS = {
+    "instagram": "Instagram Reels caption: hook on the first line, short lines, up to 2,200 characters, 5-8 hashtags at the end.",
+    "tiktok": "TikTok caption: one or two punchy lines, under 300 characters, 3-5 hashtags.",
+    "linkedin": "LinkedIn post: narrative and professional, short paragraphs, ends with a question, 3-5 hashtags, under 3,000 characters.",
+    "twitter": "X/Twitter thread: 5 to 10 numbered posts (1/n, 2/n, ...), each under 280 characters, at most 3 hashtags in the last post.",
+    "youtube": "YouTube description: one-line summary, a paragraph on what the video covers, key points as bullets, hashtags at the end. Do not invent timestamps or links.",
+}
+
+
+def format_caption(platform: str, insights: dict, hooks: list[Hook], script_rows: list[ScriptRow], tone: ToneProfile, *,
+                   transport: Transport | None = None) -> CaptionBlock:
     """Generate platform-specific caption."""
     # Use extended formatters if available for new platforms
     if EXTENDED_FORMATTERS_AVAILABLE and platform.lower() in ["tiktok_enhanced", "threads", "newsletter"]:
@@ -354,163 +353,61 @@ def format_caption(platform: str, insights: dict, hooks: list[Hook], script_rows
             hashtags = re.findall(r"#(\w+)", content)
             return CaptionBlock(platform=platform, content=content, char_count=len(content), hashtags=hashtags)
     
-    # Original template-based generation for standard platforms
-    templates = {
-        "instagram": f"""Manual scriptwriting is obsolete. The 12-minute AI workflow wins. ⚡
-
-We encoded AIDA, PAS, and viral hooks into an agent that:
-✅ Generates 5 psychologically-distinct hooks
-✅ Builds your B-roll table automatically
-✅ Outputs 4 platform captions from one source
-
-Beta results: 47/50 creators saw 2x retention in week 1.
-3 hours → 12 minutes. 200 views → 15k average.
-
-Your next viral script is 12 minutes away. 🎬
-
-First script free. Link in bio. 👇
-
-#AIcontent #Scriptwriting #ViralVideo #CreatorTools #ContentAutomation #VideoMarketing #AIFilmaking""",
-        "linkedin": f"""Stuck at 200 views? Your script process is the bottleneck.
-
-Most creators spend 3+ hours writing scripts that the algorithm buries in the first 3 seconds. The problem isn't your ideas — it's your structure.
-
-We built an AI agent that applies proven frameworks (AIDA, PAS, Hook-Value-CTA, StoryBrand) automatically:
-
-→ 5 hook variations per script (curiosity, contrarian, pain point, social proof, bold statement)
-→ B-roll table for your editor (zero guesswork)
-→ 4 platform-optimized captions from one input
-
-Beta data: 50 creators. 47 saw ≥2x retention in 7 days.
-Average production time: 3 hours → 12 minutes.
-Average views: 200 → 15,000.
-
-The uncomfortable truth: Manual scriptwriting doesn't scale. Dynamic systems do.
-
-What's the biggest friction in your current script workflow?
-
-#ContentStrategy #AITools #CreatorEconomy #VideoMarketing #ContentAutomation""",
-        "twitter": f"""1/10 Manual scriptwriting is obsolete. The 12-minute AI workflow wins. 🧵
-
-2/10 The problem: Creators spend 3h writing scripts that get 200 views. The algorithm kills you in the first 3 seconds.
-
-3/10 The fix: We encoded 4 viral frameworks into an agent:
-• AIDA (retention)
-• PAS (pain-point conversion)
-• Hook-Value-CTA (short-form)
-• StoryBrand (narrative clarity)
-
-4/10 Per script, it generates 5 hook types:
-1. Curiosity gap
-2. Contrarian truth
-3. Pain point
-4. Social proof
-5. Bold statement
-= Built-in A/B testing.
-
-5/10 It also builds a B-roll table:
-Time | Voiceover | Visual | Text Overlay | SFX
-Your editor drags & drops. Zero guesswork.
-
-6/10 One source → 4 captions:
-IG/TikTok (dynamic, emojis)
-LinkedIn (narrative, authority)
-Twitter (thread, viral)
-YouTube (SEO, timestamps)
-
-7/10 Beta: 50 creators. 47 doubled retention in week 1.
-Time: 3h → 12min. Views: 200 → 15k avg.
-
-8/10 The uncomfortable truth: Content calendars are traps. Dynamic systems win.
-
-9/10 Your next viral script is 12 minutes away. First one free.
-
-10/10 Link in bio. Try it and report back your retention numbers. 📊
-
-#AI #ContentCreation #CreatorEconomy""",
-        "youtube": f"""Manual scriptwriting is obsolete. The 12-minute AI workflow that 10x's views. 🎬
-
-In this video, we break down the AI agent that encodes AIDA, PAS, Hook-Value-CTA, and StoryBrand frameworks into an automated scriptwriting pipeline — from raw notes to multi-platform captions in 12 minutes.
-
-TIMESTAMPS:
-0:00 The Problem: 3 Hours for 200 Views
-1:15 The Solution: 4 Frameworks Automated
-2:30 Hook Generation: 5 Types, Built-in A/B Testing
-3:45 B-Roll Table: Zero Editor Guesswork
-5:00 One Source → 4 Platform Captions
-6:15 Beta Results: 47/50 Creators 2x Retention
-7:30 The Uncomfortable Truth About Content Calendars
-8:45 Live Demo: Raw Notes → Viral Script
-10:00 Your Next Steps (First Script Free)
-
-KEY INSIGHTS:
-• Framework automation beats manual study every time
-• Hook variety = algorithm resilience
-• Visual planning in script = 50% faster editing
-• Multi-platform adaptation = maximum distribution per unit effort
-
-GET YOUR FIRST SCRIPT FREE:
-🔗 [AFFILIATE/LINK]
-
-CONNECT:
-📸 Instagram: @handle
-💼 LinkedIn: @handle
-🐦 Twitter: @handle
-📧 Newsletter: [link]
-
-CHAPTERS:
-0:00 Hook
-1:15 Problem
-2:30 Framework Automation
-3:45 Hook Generation
-5:00 B-Roll Table
-6:15 Multi-Platform Output
-7:30 Beta Results
-8:45 Live Demo
-10:00 CTA
-
-#AIContent #Scriptwriting #ViralVideo #CreatorTools #ContentAutomation #VideoMarketing #AIFilmmaking #YouTubeGrowth"""
-    }
-
-    content = templates.get(platform.lower(), templates["instagram"])
+    brief = PLATFORM_BRIEFS.get(platform.lower(), f"Caption for {platform}.")
+    override = tone.platform_overrides.get(platform.lower(), {})
+    script_text = "\n".join(f"{r.time_range}: {r.voiceover}" for r in script_rows)
+    plan = complete_json(
+        f"You write social captions. {_tone_brief(tone)} {GROUNDING_RULE}",
+        f"{brief} Platform-specific tone settings: {json.dumps(override, ensure_ascii=False)}.\n\n"
+        f"Hooks available: {json.dumps([h.text for h in hooks], ensure_ascii=False)}\n\n"
+        f"Video script:\n{script_text}\n\nSource material:\n{_source_block(insights)}",
+        CaptionPlan, transport=transport)
+    content = plan.content
     hashtags = re.findall(r"#(\w+)", content)
 
     return CaptionBlock(platform=platform, content=content, char_count=len(content), hashtags=hashtags)
 
 
-def run_pipeline(input_path: Path, tone: ToneProfile, platforms: list[str]) -> PipelineOutput:
-    """Execute the full Module 1 pipeline."""
-    # Read input
+def run_pipeline(input_path: Path, tone: ToneProfile, platforms: list[str], *, offline: bool = False,
+                 transport: Transport | None = None) -> PipelineOutput:
+    """Execute the full Module 1 pipeline.
+
+    offline=True runs only the rule-based steps (cleaning, segmentation, framework map) and
+    leaves hooks, script and captions empty instead of inventing them.
+    """
     with open(input_path, "r", encoding="utf-8") as f:
         raw_text = f.read()
 
     # Step 1: Clean & segment
     cleaned_text, segments = clean_transcript(raw_text)
 
-    # Step 2: Extract insights
+    # Step 2: Extract insights. Transcripts without explicit markers come back as one
+    # lump, so let the model structure them.
     insights = extract_insights(segments)
+    unmarked = len(segments) == 1 and not any(insights[k] for k in ("arguments", "data_points", "soundbites", "pain_points"))
+    if unmarked and not offline:
+        insights = extract_insights_llm(cleaned_text, transport=transport)
 
     # Step 3: Framework map
     framework_map = {p: select_framework(p) for p in platforms}
 
-    # Step 4: Generate hooks
-    hooks = generate_hooks(insights, tone)
+    if offline:
+        hooks, script_table, captions = [], [], []
+    else:
+        # Steps 4-6: hooks, script table, captions
+        hooks = generate_hooks(insights, tone, transport=transport)
+        script_table = build_script_table(insights, hooks, tone, transport=transport)
+        captions = [format_caption(p, insights, hooks, script_table, tone, transport=transport) for p in platforms]
 
-    # Step 5: Build script table
-    script_table = build_script_table(insights, hooks)
-
-    # Step 6: Generate captions
-    captions = [format_caption(p, insights, hooks, script_table, tone) for p in platforms]
-
-    # Assemble output
-    output = PipelineOutput(
+    return PipelineOutput(
         metadata={
             "input_file": str(input_path),
             "tone_id": tone.tone_id,
             "platforms": platforms,
             "generated_at": datetime.now().isoformat(),
             "raw_char_count": len(raw_text),
-            "cleaned_char_count": len(cleaned_text)
+            "cleaned_char_count": len(cleaned_text),
+            "mode": "offline" if offline else "llm",
         },
         cleaned_segments=segments,
         framework_map=framework_map,
@@ -518,8 +415,6 @@ def run_pipeline(input_path: Path, tone: ToneProfile, platforms: list[str]) -> P
         script_table=script_table,
         captions=captions
     )
-
-    return output
 
 
 def write_output(output: PipelineOutput, output_dir: Path) -> Path:
@@ -531,7 +426,9 @@ def write_output(output: PipelineOutput, output_dir: Path) -> Path:
         f"# Pipeline Output — {output.metadata['generated_at']}\n",
         f"**Input:** `{output.metadata['input_file']}`  ",
         f"**Tone:** `{output.metadata['tone_id']}`  ",
-        f"**Platforms:** `{', '.join(output.metadata['platforms'])}`\n",
+        f"**Platforms:** `{', '.join(output.metadata['platforms'])}`  ",
+        f"**Mode:** `{output.metadata.get('mode', 'llm')}`"
+        + ("  \n_Offline run: hooks, script and captions were not generated._\n" if output.metadata.get("mode") == "offline" else "\n"),
         "## 1. CLEANED TRANSCRIPT SEGMENTS\n"
     ]
 
@@ -567,7 +464,7 @@ def write_output(output: PipelineOutput, output_dir: Path) -> Path:
     checks = [
         ("5 hooks generated, one per type", len(output.hooks) == 5),
         ("Script table ≥5 rows", len(output.script_table) >= 5),
-        ("4 caption blocks present", len(output.captions) == 4),
+        ("One caption block per requested platform", len(output.captions) == len(output.metadata["platforms"])),
     ]
     for desc, passed in checks:
         md_parts.append(f"- [{'x' if passed else ' '}] {desc}")
@@ -583,6 +480,8 @@ def main():
     parser.add_argument("--platforms", default="instagram,linkedin,twitter,youtube", help="Comma-separated platforms")
     parser.add_argument("--tone-config", default="config/tone_of_voice.yaml", help="Path to tone config YAML")
     parser.add_argument("--output-dir", default="output", help="Output directory")
+    parser.add_argument("--offline", action="store_true",
+                        help="Run only the rule-based steps; skip hooks, script and captions (no API key needed)")
     args = parser.parse_args()
 
     # Load tone profile
@@ -597,8 +496,16 @@ def main():
 
     platforms = [p.strip() for p in args.platforms.split(",")]
 
+    if not args.offline and not llm_configured():
+        print(f"Error: {MISSING_KEY_HELP}", file=sys.stderr)
+        sys.exit(2)
+
     # Run pipeline
-    output = run_pipeline(Path(args.input), tone, platforms)
+    try:
+        output = run_pipeline(Path(args.input), tone, platforms, offline=args.offline)
+    except LLMError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     # Write output
     output_dir = Path(args.output_dir)

@@ -7,6 +7,7 @@ Usage: python module2_radar.py --feeds config/feeds.yaml --webhook-url $SLACK_WE
 import argparse
 import asyncio
 import hashlib
+import html
 import json
 import os
 import re
@@ -21,6 +22,12 @@ from urllib.parse import urlparse
 import httpx
 import yaml
 from pydantic import BaseModel, Field
+
+# Standalone LLM client (OpenAI-compatible endpoint, Gemini by default)
+_scripts_dir = Path(__file__).parent
+if str(_scripts_dir) not in sys.path:
+    sys.path.insert(0, str(_scripts_dir))
+from llm_client import LLMError, MISSING_KEY_HELP, Transport, complete_json, llm_configured
 
 # Optional: LLM delegation (requires Hermes delegate_task tool)
 try:
@@ -170,8 +177,9 @@ async def fetch_rss(session: httpx.AsyncClient, feed: FeedConfig, since: datetim
             preview = (desc_match.group(1) or desc_match.group(2) or desc_match.group(3) or desc_match.group(4) or "").strip() if desc_match else ""
 
             # Clean HTML from preview
-            preview = re.sub(r"<[^>]+>", "", preview)
-            preview = re.sub(r"\s+", " ", preview)[:500]
+            # feeds often escape their markup (&lt;div&gt;...), so unescape before stripping tags
+            preview = re.sub(r"<[^>]+>", " ", html.unescape(preview))
+            preview = re.sub(r"\s+", " ", preview).strip()[:500]
 
             # Parse date
             published_at = None
@@ -445,30 +453,45 @@ def dedupe_candidates(candidates: list[CandidateItem]) -> list[CandidateItem]:
 
 ANGLES = ["Contrarian", "Educational", "Case Study", "Prediction", "Framework"]
 
-def generate_insights(candidate: CandidateItem, niche: str, tone: ToneProfile) -> tuple[str, str, str]:
-    """Generate executive summary, key insight, and suggested angle.
-    
-    Uses LLM delegation if available (Hermes delegate_task), falls back to templates.
+class InsightPlan(BaseModel):
+    executive_summary: str = Field(max_length=600)
+    key_insight: str = Field(max_length=300)
+    suggested_angle: str = Field(pattern="^(Contrarian|Educational|Case Study|Prediction|Framework)$")
+
+
+class DraftPlan(BaseModel):
+    draft_post: str = Field(min_length=20, max_length=3000)
+
+
+GROUNDING_RULE = ("Base everything on the item below. Do not invent facts, numbers or quotes that are not in it; "
+                  "if the preview is thin, say less.")
+
+
+def _tone_brief(tone: ToneProfile) -> str:
+    persona = tone.persona
+    return (f"Tone: {tone.display_name}. Write in {tone.language}. "
+            f"Persona: {persona.get('archetype', '')}; traits: {', '.join(persona.get('traits', []))}. "
+            f"Never use these words: {', '.join(persona.get('forbidden_words', [])) or 'none'}.")
+
+
+def generate_insights(candidate: CandidateItem, niche: str, tone: ToneProfile, *, offline: bool = False,
+                      transport: Transport | None = None) -> tuple[str, str, str]:
+    """Generate executive summary, key insight and suggested angle for a shortlisted item.
+
+    offline=True skips the model and returns the feed's own preview as the summary.
     """
-    # Try LLM delegation first (would need delegate_task_fn passed in)
-    # For CLI usage, fall back to templates
-    pass
-    
-    # Template fallback (current implementation)
-    angle = "Contrarian"  # Default
+    if offline:
+        return candidate.content_preview.strip(), "", "Educational"
 
-    executive_summary = (
-        f"{candidate.title}. "
-        f"This signals a shift in {niche} that creators and businesses should monitor. "
-        f"Early movers will capture disproportionate value."
-    )
-
-    key_insight = (
-        f"The underlying trend in {candidate.source_name} reveals {niche} is approaching "
-        f"an inflection point — adapt now or lose relevance."
-    )
-
-    return executive_summary, key_insight, angle
+    item = {"title": candidate.title, "source": candidate.source_name, "published_at": candidate.published_at,
+            "keywords_matched": candidate.keywords_matched, "content_preview": candidate.content_preview}
+    plan = complete_json(
+        f"You brief a content team working in this niche: {niche}. {_tone_brief(tone)} {GROUNDING_RULE}",
+        "Write a three-sentence executive summary (what happened, why it matters for the niche, the opportunity "
+        "or risk), a one-sentence key insight, and pick the best content angle.\n\n"
+        f"Item:\n{json.dumps(item, ensure_ascii=False, indent=2)}",
+        InsightPlan, transport=transport)
+    return plan.executive_summary, plan.key_insight, plan.suggested_angle
 
 
 def generate_insights_llm(candidate: CandidateItem, niche: str, tone: ToneProfile, delegate_task_fn) -> tuple[str, str, str]:
@@ -501,26 +524,31 @@ def generate_insights_llm(candidate: CandidateItem, niche: str, tone: ToneProfil
     return validated.executive_summary, validated.key_insight, validated.suggested_angle
 
 
-def draft_post(item: EnrichedItem, tone: ToneProfile, platform: str) -> str:
-    """Generate platform-specific draft post.
-    
-    Uses LLM delegation if available (Hermes delegate_task), falls back to templates.
-    """
-    # Template fallback (current implementation)
-    platform_override = tone.platform_overrides.get(platform, {})
+PLATFORM_BRIEFS = {
+    "linkedin": "LinkedIn post: short paragraphs, professional, ends with a question, 3-5 hashtags, under 3,000 characters.",
+    "instagram": "Instagram caption: hook on the first line, short lines, 5-8 hashtags at the end.",
+    "tiktok": "TikTok caption: one or two punchy lines, under 300 characters, 3-5 hashtags.",
+    "twitter": "X/Twitter thread: 3 to 6 numbered posts, each under 280 characters.",
+}
 
-    # Base draft from key insight
-    base = f"{item.key_insight}\n\n{item.executive_summary}\n\nWhat's your take on this shift? 👇"
 
-    # Apply platform formatting (simplified)
-    if platform == "linkedin":
-        return f"{item.title}\n\n{base}\n\n#AI #ContentStrategy #CreatorEconomy"
-    elif platform in ["instagram", "tiktok"]:
-        return f"{item.title} 🚀\n\n{base}\n\n#{item.keywords_matched[0].replace(' ', '') if item.keywords_matched else 'Trending'} #CreatorTools"
-    elif platform == "twitter":
-        return f"1/3 {item.title}\n\n2/3 {item.key_insight}\n\n3/3 {item.executive_summary}\n\nThoughts? 🧵"
-    else:
-        return base
+def draft_post(item: EnrichedItem, tone: ToneProfile, platform: str, *, offline: bool = False,
+               transport: Transport | None = None) -> str:
+    """Draft a platform-specific post about a shortlisted item, for human approval."""
+    if offline:
+        return ""
+
+    brief = PLATFORM_BRIEFS.get(platform, f"Post for {platform}.")
+    source = {"title": item.title, "source": item.source, "url": item.source_url,
+              "executive_summary": item.executive_summary, "key_insight": item.key_insight,
+              "angle": item.suggested_angle}
+    plan = complete_json(
+        f"You draft social posts for human approval. {_tone_brief(tone)} {GROUNDING_RULE}",
+        f"{brief} Take the '{item.suggested_angle}' angle. Platform tone settings: "
+        f"{json.dumps(tone.platform_overrides.get(platform, {}), ensure_ascii=False)}.\n\n"
+        f"Item:\n{json.dumps(source, ensure_ascii=False, indent=2)}",
+        DraftPlan, transport=transport)
+    return plan.draft_post
 
 
 def draft_post_llm(item: EnrichedItem, tone: ToneProfile, platform: str, delegate_task_fn) -> str:
@@ -641,7 +669,9 @@ async def send_webhook(webhook_url: str, payload: dict, is_telegram: bool = Fals
 
 # --- Main Radar Logic ---
 
-async def run_radar(feeds_config: FeedsConfig, tone: ToneProfile, webhook_url: str, state: StateManager, force_report: bool = False):
+async def run_radar(feeds_config: FeedsConfig, tone: ToneProfile, webhook_url: str, state: StateManager,
+                    force_report: bool = False, *, offline: bool = False, dry_run: bool = False,
+                    transport: Transport | None = None):
     """Execute one radar cycle."""
     now = datetime.now(timezone.utc)
     last_run = state.load_last_run()
@@ -734,7 +764,8 @@ async def run_radar(feeds_config: FeedsConfig, tone: ToneProfile, webhook_url: s
     enriched_items = []
     for i, (score, candidate) in enumerate(top_candidates):
         item_id = f"trend_{now.strftime('%Y%m%d')}_{i+1:03d}"
-        exec_summary, key_insight, angle = generate_insights(candidate, feeds_config.niche, tone)
+        exec_summary, key_insight, angle = generate_insights(candidate, feeds_config.niche, tone,
+                                                             offline=offline, transport=transport)
 
         enriched = EnrichedItem(
             item_id=item_id,
@@ -755,11 +786,21 @@ async def run_radar(feeds_config: FeedsConfig, tone: ToneProfile, webhook_url: s
         )
         # Add niche for LLM delegation context
         enriched.niche = feeds_config.niche
-        enriched.draft_post = draft_post(enriched, tone, feeds_config.primary_platform)
+        enriched.draft_post = draft_post(enriched, tone, feeds_config.primary_platform,
+                                         offline=offline, transport=transport)
         enriched_items.append(enriched)
 
     # Save shortlist
     state.save_shortlist(enriched_items, timestamp)
+
+    # Dry run: show the approval cards instead of delivering them
+    if dry_run:
+        for item in enriched_items:
+            print(f"\n--- {item.item_id} | score {item.score:.2f} | {item.suggested_angle} ---")
+            print(f"{item.title}\n{item.source} | {item.source_url}")
+            print(f"Summary: {item.executive_summary}\nInsight: {item.key_insight}\nDraft:\n{item.draft_post}")
+        print(f"\n✅ Dry run complete: {len(enriched_items)} cards, nothing sent")
+        return enriched_items
 
     # Send webhooks
     if enriched_items or force_report:
@@ -803,6 +844,10 @@ def main():
     parser.add_argument("--webhook-url", help="Webhook URL (Slack or Telegram). Can also use env var from feeds config.")
     parser.add_argument("--state-dir", default="state", help="State directory")
     parser.add_argument("--force-report", action="store_true", help="Send report even if no trends")
+    parser.add_argument("--offline", action="store_true",
+                        help="Skip the LLM: cards carry the feed's own preview and no draft post (no API key needed)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Print the approval cards instead of sending them (no webhook needed)")
     args = parser.parse_args()
 
     # Load configs
@@ -818,13 +863,21 @@ def main():
 
     # Determine webhook URL
     webhook_url = args.webhook_url or os.getenv(feeds_config.webhook_url_env)
-    if not webhook_url:
-        print("Error: No webhook URL provided. Use --webhook-url or set env var.", file=sys.stderr)
+    if not webhook_url and not args.dry_run:
+        print("Error: No webhook URL provided. Use --webhook-url, set the env var, or pass --dry-run.", file=sys.stderr)
         sys.exit(1)
+    if not args.offline and not llm_configured():
+        print(f"Error: {MISSING_KEY_HELP}", file=sys.stderr)
+        sys.exit(2)
 
     # Run radar
     state = StateManager(Path(args.state_dir))
-    asyncio.run(run_radar(feeds_config, tone, webhook_url, state, args.force_report))
+    try:
+        asyncio.run(run_radar(feeds_config, tone, webhook_url or "", state, args.force_report,
+                              offline=args.offline, dry_run=args.dry_run))
+    except LLMError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
