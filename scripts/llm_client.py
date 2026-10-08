@@ -10,6 +10,7 @@ Environment:
     METIS_LLM_API_KEY   API key (falls back to GEMINI_API_KEY, then OPENAI_API_KEY)
     METIS_LLM_BASE_URL  default https://generativelanguage.googleapis.com/v1beta/openai
     METIS_LLM_MODEL     default gemini-flash-latest
+    METIS_LLM_TIMEOUT   seconds per request, default 120 (raise it for local models that load slowly)
 """
 
 import json
@@ -63,7 +64,7 @@ def _http_transport(system: str, user: str) -> str:
                 "response_format": {"type": "json_object"},
                 "temperature": 0.7,
             },
-            timeout=120,
+            timeout=float(os.getenv("METIS_LLM_TIMEOUT", "120")),
         )
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"]
